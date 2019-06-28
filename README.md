@@ -1,4 +1,14 @@
-# web-logs
+本项目由 `Vue cli 3.0` 搭建。
+
+## 使用技术栈
+
+* Vue
+* Typescript
+* Axios
+* Element UI
+* Vue-Router
+* Mocha + chai
+* Sass
 
 ## Vue 使用 TypeScript 的两种方式
 
@@ -48,6 +58,3 @@ npm run lint
 ```
 npm run test:unit
 ```
-
-### Customize configuration
-See [Configuration Reference](https://cli.vuejs.org/config/).
