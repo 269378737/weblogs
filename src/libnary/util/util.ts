@@ -1,86 +1,68 @@
+import { Message, Loading } from 'element-ui';
+import { ElLoadingComponent } from 'element-ui/types/loading';
+import { SelectList } from '@/interface/util';
 
-export default {
-  install(Vue: any) {
-    const vm = new Vue();
+export interface IUtil {
+  vmMsgSuccess(msg: string): void;
+  vmMsgWarning(msg: string): void;
+  vmMsgError(msg: string): void;
+  vmOpenFullLoading(msg?: string): void;
+  vmCloseFullLoading(): void;
+  vmSelectCompute(enumArgs: object): SelectList[];
+}
 
-    /**
-     * 操作成功提示框
-     * @param { msg } 提示信息
-     */
-    Vue.prototype.vmMsgSuccess = (msg: string = '操作成功！'): void => {
-      vm.$message({
-        showClose: true,
-        message  : msg,
-        type     : 'success',
+class Utils implements IUtil {
+  private loading: ElLoadingComponent | null = null;
+
+  public vmMsgError = (msg: string = '操作失败！'): void => {
+    Message({
+      showClose: true,
+      message  : msg,
+      type     : 'error',
+    });
+  }
+
+  public vmMsgSuccess = (msg: string = '操作成功！'): void => {
+    Message({
+      showClose: true,
+      message  : msg,
+      type     : 'success',
+    });
+  }
+
+  public vmMsgWarning = (msg: string = '无法进行当前操作！'): void => {
+    Message({
+      showClose: true,
+      message  : msg,
+      type     : 'warning',
+    });
+  }
+
+  public vmOpenFullLoading = (msg: string = '处理中，请稍后...'): void => {
+    this.loading = Loading.service({
+      lock      : true,
+      text      : msg,
+      background: 'rgba(234, 234, 234, 0.86)',
+    });
+  }
+
+  public vmCloseFullLoading = (): void => {
+    this.loading!.close();
+  }
+
+  public vmSelectCompute(enumArgs: object): SelectList[] {
+    const arr: SelectList[] = [];
+    let keys = Object.keys(enumArgs);
+    keys = keys.slice(keys.length / 2);
+    keys.forEach((item: string) => {
+      arr.push({
+        id: enumArgs[item as keyof typeof enumArgs],
+        name: item,
       });
-    };
+    });
+    return arr;
+  }
+}
 
-    /**
-     * 操作告警提示框
-     * @param { msg } 提示信息
-     */
-    Vue.prototype.vmMsgWarning = (msg: string = '无法进行当前操作！'): void => {
-      vm.$message({
-        showClose: true,
-        message  : msg,
-        type     : 'warning',
-      });
-    };
 
-    /**
-     * 操作错误提示框
-     * @param { msg } 提示信息
-     */
-    Vue.prototype.vmMsgError = (msg: string = '操作失败！'): void => {
-      vm.$message({
-        showClose: true,
-        message  : msg,
-        type     : 'error',
-      });
-    };
-
-    /**
-     * 将日期时间转换成指定格式
-     * 调用：dateFormat("yyyy-MM-dd hh:mm:ss")
-     */
-   /*  Vue.prototype.dateFormat = (date: Date, fmt: string) => {
-      // 一季度3个月
-      const MONTHS_PER_QUARTER = 3;
-      interface O {
-        'M+': number;
-        'd+': number;
-        'h+': number;
-        'm+': number;
-        's+': number;
-        'q+': number;
-        S: number;
-        [key: string]: any;
-      }
-      const o: O = {
-        // 月份
-        'M+': date.getMonth() + 1,
-        // 日
-        'd+': date.getDate(),
-        // 小时
-        'h+': date.getHours(),
-        // 分
-        'm+': date.getMinutes(),
-        // 秒
-        's+': date.getSeconds(),
-        // 季度
-        'q+': Math.floor((date.getMonth() + MONTHS_PER_QUARTER) / MONTHS_PER_QUARTER),
-        // 毫秒
-        'S'   : date.getMilliseconds(),
-      };
-      if (/(y+)/.test(fmt)) {
-        fmt = fmt.replace(RegExp.$1, `${date.getFullYear()}`.substr(4 - RegExp.$1.length));
-      }
-      for (const k in o) {
-        if (new RegExp(`(${k})`).test(fmt)) {
-          fmt = fmt.replace(RegExp.$1, RegExp.$1.length === 1 ? o[k] : `00${o[k]}`.substr(`${o[k]}`.length));
-        }
-      }
-      return fmt;
-    }; */
-  },
-};
+export default new Utils();

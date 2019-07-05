@@ -18,7 +18,7 @@ interface ServerResponse {
 
 
 const instance = axios.create({
-  timeout: 5000,
+  timeout: 15000,
 });
 
 instance.interceptors.request.use((req) => {
@@ -26,6 +26,11 @@ instance.interceptors.request.use((req) => {
 });
 
 instance.interceptors.response.use((res) => {
+  if (res.status === 500) {
+    Message.error('服务器错误！');
+    return Promise.resolve();
+  }
+
   if (res.status === 200) {
     const { data } = res as HttpResponse;
     const {body, code, code_msg} = data;
@@ -49,7 +54,7 @@ instance.interceptors.response.use((res) => {
     return Promise.resolve();
   } else {
     // 处理断网的情况
-    Message.error('网络错误！');
+    Message.error('服务器无响应！');
     return Promise.resolve();
   }
 });

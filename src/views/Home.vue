@@ -21,12 +21,12 @@
           :props="defaultProps"
           :highlight-current="true"
           :filter-node-method="filterNode"
-          @node-click="onDeviceIdSelect"
           ref="tree"
         >
           <span class="tree-content" slot-scope="{ node, data }">
-            <span @click="onDeviceIdClick(node.label)">{{ node.label }}</span>
+            <span class="tree-label" @click="onDeviceIdClick(node.label)">{{ node.label }}</span>
             <i
+              v-if="data.id !== 0"
               class="el-icon-delete"
               style="margin-left:12px"
               @click="() => onRemoveDeviceID(node, data)"
@@ -60,9 +60,9 @@
             </el-form-item>
             <el-form-item>
               <el-select v-model="form.log_type">
-                <el-option label="通用" value="0"></el-option>
-                <el-option label="SDK日志" value="1"></el-option>
-                <el-option label="固件/app日志" value="2"></el-option>
+                <el-option label="通用" :value="0"></el-option>
+                <el-option label="SDK日志" :value="1"></el-option>
+                <el-option label="固件/app日志" :value="2"></el-option>
               </el-select>
             </el-form-item>
             <el-form-item>
@@ -121,30 +121,13 @@
 <script lang="ts">
 import { Component, Vue, Watch, Ref } from 'vue-property-decorator';
 import { ElTree } from 'element-ui/types/tree';
-import { TreeNode, LogLevelList, LogResponse } from '@/interface/home';
+import { TreeNode, LogResponse, WebSocketOptions, FormLogQuery } from '@/interface/home';
+import { SelectList } from '@/interface/util';
 import { LogLevel } from '@/enum/enum';
 
 const token: string = 'mktech2018';
 const evt: string = '/iot/logRep';
 const wsUrl: string = 'ws://120.79.178.33:30570/ws';
-interface WebSocketOptions {
-  deviceId: string;
-  token: string;
-  type: number;  // 1 实时, 2 查询
-  event: string;
-  logLevel: number;
-  logType: number; // 通用 、app、sdk
-}
-interface FormLogQuery {
-  id_name: string;
-  dateRange: string[];
-  log_level: number;
-  log_type: string;
-  start_time: number;
-  end_time: number;
-  page: number;
-  page_size: number;
-}
 
 @Component
 export default class Home extends Vue {
@@ -156,7 +139,7 @@ export default class Home extends Vue {
   private logMode: string = '0';
   private data: TreeNode[] = [{
     id: 0,
-    label: 'all',
+    label: 'All devices',
   }];
   // 是否正在查询日志数据
   private isGetting: boolean = false;
@@ -186,7 +169,7 @@ export default class Home extends Vue {
     id_name: '',
     dateRange: [],
     log_level: 4,
-    log_type: '0',
+    log_type: 0,
     start_time: 0,
     end_time: 0,
     page: 1,
@@ -194,17 +177,8 @@ export default class Home extends Vue {
   };
 
   /* computed */
-  get logLevelLists(): LogLevelList[] {
-    const arr: LogLevelList[] = [];
-    let keys = Object.keys(LogLevel);
-    keys = keys.slice(keys.length / 2);
-    keys.forEach((item: string) => {
-      arr.push({
-        id: LogLevel[item as keyof typeof LogLevel],
-        name: item,
-      });
-    });
-    return arr;
+  get logLevelLists(): SelectList[] {
+    return this.$util.vmSelectCompute(LogLevel);
   }
 
   @Ref('tree') private readonly tree!: ElTree;
@@ -232,6 +206,8 @@ export default class Home extends Vue {
 
   @Watch('form.log_level')
   private onLogLevelChanged(val: number) {
+    // 切换查询条件后应该将页码置为1
+    this.form.page = 1;
     if (this.logMode === '0') {
       this.wsParams.logLevel = val;
       this.openSocket();
@@ -241,11 +217,18 @@ export default class Home extends Vue {
 
   @Watch('form.log_type')
   private onLogTypeChanged(val: string) {
+    // 切换查询条件后应该将页码置为1
+    this.form.page = 1;
     if (this.logMode === '0') {
       this.wsParams.logType = Number(val);
       this.openSocket();
       this.isPause = false;
     }
+  }
+  @Watch('form.dateRange')
+  private onDateChanged(val: string[]) {
+    // 切换查询条件后应该将页码置为1
+    this.form.page = 1;
   }
 
   /* lifecycle */
@@ -401,7 +384,15 @@ export default class Home extends Vue {
       id: this.data.length,
       label: this.filterText,
     };
-    this.data.unshift(newDeviceId as never);
+
+    // 检测是否已经存在
+    const isHas = this.data.find((o) => o.label === this.filterText);
+    if (isHas) {
+      this.filterText = '';
+      return this.$util.vmMsgWarning('设备ID已存在！');
+    }
+
+    this.data.push(newDeviceId as never);
     this.filterText = '';
     localStorage.setItem('deviceLists', JSON.stringify(this.data));
   }
@@ -412,32 +403,34 @@ export default class Home extends Vue {
   }
 
   private onDeviceIdClick(deviceId: string): void {
+    this.wsParams.deviceId = deviceId === 'All devices' ? '' : deviceId;
+    this.form.id_name = deviceId === 'All devices' ? '' : deviceId;
+    this.form.page = 1;
     // 如果选择设备ID时不是实时状态，则不打开socket
     if (!this.isDisabled) { return; }
-    this.wsParams.deviceId = deviceId;
     this.openSocket();
     this.isPause = false;
   }
 
-  private onDeviceIdSelect(data: TreeNode): void {
-    this.wsParams.deviceId = data.label;
-    this.form.id_name = data.label;
-  }
-
   private async onSubmit(flag: number) {
     this.isQueryButtonClicked = true;
-    if (this.form.dateRange.length > 0) {
+    if (this.form.dateRange && this.form.dateRange.length > 0) {
       this.form.start_time = new Date(this.form.dateRange[0]).getTime() / 1000;
       this.form.end_time = new Date(this.form.dateRange[1]).getTime() / 1000;
+    } else {
+      this.form.start_time = 0;
+      this.form.end_time = 0;
     }
     this.isGetting = true;
-    const res: LogResponse = await this.$http.post('/v1/iotlog/getlog', this.form);
+    this.$util.vmOpenFullLoading();
+    const res: LogResponse = await this.$http.post('/v2/iotlog/getlog', this.form);
+    this.$util.vmCloseFullLoading();
     if (!res) { return; }
     const { logs } = res;
     if (!logs) {
-      this.$message.error('无数据');
+      this.$util.vmMsgWarning('无数据');
       // 如果未查找到数据，则保持当前页码，以便下次有数据时能从当前页继续查找
-      this.form.page -= 1; return;
+      if (this.form.page > 1) { this.form.page -= 1; } return;
     }
     // 在每次点击按钮查询时清空日志黑板
     if (flag === this.queryWay.click) {
@@ -485,12 +478,24 @@ export default class Home extends Vue {
 .el-tree .tree-content {
   margin-left: -10px;
   font-size: 12px;
+  width: 90%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.el-tree .tree-content .tree-label {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
 }
 
 .iot-lists {
   border: 1px solid #939393;
   text-align: center;
   min-width: 220px;
+  overflow-y: scroll;
 }
 .iot-lists .item {
   padding: 10px 15px;
@@ -509,21 +514,16 @@ export default class Home extends Vue {
 .logs-lists {
   padding-left: 20px;
   box-sizing: border-box;
-  display: table;
+  display: flex;
   height: 100%;
   min-width: 1085px;
-}
-
-.logs-lists .search {
-  display: table-row;
-  height: 60px;
+  flex-direction: column;
 }
 
 .logs-lists .logs {
-  display: table-row;
   background: #f1f1f1;
   color: #583333;
-  overflow: scroll;
+  height: 93%;
 }
 
 .logs-lists .logs .logs-container {
