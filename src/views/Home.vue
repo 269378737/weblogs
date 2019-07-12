@@ -60,6 +60,7 @@
             </el-form-item>
             <el-form-item>
               <el-select v-model="form.log_type">
+                <el-option label="All" :value="10"></el-option>
                 <el-option label="通用" :value="0"></el-option>
                 <el-option label="SDK日志" :value="1"></el-option>
                 <el-option label="固件/app日志" :value="2"></el-option>
@@ -169,7 +170,7 @@ export default class Home extends Vue {
     id_name: '',
     dateRange: [],
     log_level: 4,
-    log_type: 0,
+    log_type: 10,
     start_time: 0,
     end_time: 0,
     page: 1,
@@ -450,13 +451,17 @@ export default class Home extends Vue {
 }
 </script>
 
-<style scoped>
-.el-input {
-  width: 200px;
-}
+<style lang="scss" scoped>
+$input-width: 200px;
+$select-width: 130px;
+$bg-color: #409eff;
+$bg-font-color: #fff;
 
+.el-input {
+  width: $input-width;
+}
 .el-select {
-  width: 130px;
+  width: $select-width;
 }
 
 .iot-lists-filter {
@@ -465,30 +470,29 @@ export default class Home extends Vue {
 
 .el-tree {
   margin-top: 20px;
-}
-.el-tree /deep/ .el-tree-node__content {
-  height: 36px;
-}
-
-.el-tree /deep/ .el-tree-node.is-current > .el-tree-node__content {
-  background-color: #409eff;
-  color: #fff;
-}
-
-.el-tree .tree-content {
-  margin-left: -10px;
-  font-size: 12px;
-  width: 90%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-}
-
-.el-tree .tree-content .tree-label {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
+  /deep/ .el-tree-node__content {
+    height: 36px;
+  }
+  /deep/ .el-tree-node.is-current {
+    > .el-tree-node__content {
+      background-color: $bg-color;
+      color: $bg-font-color;
+    }
+  }
+  .tree-content {
+    margin-left: -10px;
+    font-size: 12px;
+    width: 90%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    .tree-label {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+    }
+  }
 }
 
 .iot-lists {
@@ -497,48 +501,33 @@ export default class Home extends Vue {
   min-width: 220px;
   overflow-y: scroll;
 }
-.iot-lists .item {
-  padding: 10px 15px;
-  margin: 0;
-  cursor: pointer;
-  transition: all 0.8s ease;
-}
-.iot-lists .item:first-child {
-  margin-top: 20px;
-}
-.iot-lists .item:hover {
-  background: #2196f3;
-  color: #fff;
-}
 
 .logs-lists {
   padding-left: 20px;
   box-sizing: border-box;
   display: flex;
   height: 100%;
-  min-width: 1085px;
   flex-direction: column;
+  .logs {
+    background: #f1f1f1;
+    color: #583333;
+    height: 93%;
+    .logs-container {
+      overflow-y: scroll;
+      height: 100%;
+    }
+    /deep/ .log-detail {
+      margin: 10px 20px;
+    }
+  }
 }
+</style>
 
-.logs-lists .logs {
-  background: #f1f1f1;
-  color: #583333;
-  height: 93%;
-}
 
-.logs-lists .logs .logs-container {
-  overflow-y: scroll;
-  height: 100%;
-}
-
-.logs-lists .logs /deep/ .log-detail {
-  margin: 10px 20px;
-}
-
-.logs-lists .logs .log-detail span {
+<style scoped>
+/* .logs-lists .logs .log-detail span {
   display: table-cell;
 }
-
 .logs-lists .logs .log-detail .log-title {
   min-width: 250px;
 }
@@ -565,5 +554,5 @@ export default class Home extends Vue {
 
 .logs-lists .logs .log-detail .fatal {
   color: #b65cff;
-}
+} */
 </style>
