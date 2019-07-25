@@ -1,38 +1,54 @@
 import axios from 'axios';
-import { Message } from 'element-ui';
+import { Message, Loading } from 'element-ui';
+import { ElLoadingComponent } from 'element-ui/types/loading';
 
-interface HttpResponse {
+/**
+ * axios 返回格式
+ */
+interface IHttpResponse {
   config: object;
-  data: ServerResponse;
+  data: IServerResponse;
   headers: object;
   request: object;
   status: number;
   statusText: string;
 }
 
-interface ServerResponse {
+/**
+ * 与后台约定格式
+ */
+interface IServerResponse {
   body: any;
   code: number;
   code_msg: string;
 }
 
+let loading: ElLoadingComponent | null = null;
 
 const instance = axios.create({
   timeout: 15000,
 });
 
 instance.interceptors.request.use((req) => {
+  const { params } = req;
+  // 默认开启loading，如果某些接口不需要则传入 noLoading 参数，且设置值为 true
+  if (!params || !params.noLoading) {
+    loading = Loading.service({
+      lock      : true,
+      text      : `处理中，请稍后...`,
+      background: 'rgba(234, 234, 234, 0.86)',
+    });
+  } else {
+    // 设置了 noLoading，再发出请求时删除该参数
+    delete params.noLoading;
+  }
   return req;
 });
 
 instance.interceptors.response.use((res) => {
-  if (res.status === 500) {
-    Message.error('服务器错误！');
-    return Promise.resolve();
-  }
-
+  if (loading) { loading.close(); }
   if (res.status === 200) {
-    const { data } = res as HttpResponse;
+    const { data } = res as IHttpResponse;
     const {body, code, code_msg} = data;
     if (code !== 0) {
       Message.error(code_msg);
@@ -44,16 +60,28 @@ instance.interceptors.response.use((res) => {
     }
     return Promise.resolve(body);
   }
-  Message.error('获取数据失败！');
+
+  const { status } = res;
+  switch (status) {
+    case 500:
+      Message.error('服务器错误！'); break;
+    default:
+      Message.error('获取数据失败！'); break;
+  }
   return Promise.resolve();
 }, (error) => {
-  const { response } = error;
+  if (loading) { loading.close(); }
+  const response: IHttpResponse = error.response;
   if (response) {
-    // 请求已发出，但是不在2xx的范围
-    Message.error('请求数据失败！');
+    const { status } = response;
+    switch (status) {
+      case 404:
+        Message.error('接口不存在！'); break;
+      default:
+        Message.error('接口调用出错！'); break;
+    }
     return Promise.resolve();
   } else {
-    // 处理断网的情况
     Message.error('服务器无响应！');
     return Promise.resolve();
   }

@@ -122,7 +122,7 @@
 <script lang="ts">
 import { Component, Vue, Watch, Ref } from 'vue-property-decorator';
 import { ElTree } from 'element-ui/types/tree';
-import { TreeNode, LogResponse, WebSocketOptions, FormLogQuery } from '@/interface/home';
+import { TreeNode, LogResponse, WebSocketOptions, FormLogQuery, DeviceIp } from '@/interface/home';
 import { SelectList } from '@/interface/util';
 import { LogLevel } from '@/enum/enum';
 
@@ -153,6 +153,8 @@ export default class Home extends Vue {
   private isQueryButtonClicked: boolean = false;
   // 是否暂停了实时日志
   private isPause: boolean = false;
+  // 统计重连socket失败的次数，失败次数超过三次就不再重连
+  private connectFailedNumber: number = 0;
   private wsParams: WebSocketOptions = {
     deviceId: '',
     token,
@@ -227,7 +229,7 @@ export default class Home extends Vue {
     }
   }
   @Watch('form.dateRange')
-  private onDateChanged(val: string[]) {
+  private onDateChanged(/*val: string[]*/) {
     // 切换查询条件后应该将页码置为1
     this.form.page = 1;
   }
@@ -237,6 +239,13 @@ export default class Home extends Vue {
     const deviceLists = localStorage.getItem('deviceLists');
     if (!deviceLists) { return; }
     this.data = JSON.parse(deviceLists);
+
+    // 遍历设备ID，预取其所在服务器ip
+    this.data.forEach((item) => {
+      if (item.id !== 0) {
+        this.getDeviceIp(item.label, false);
+      }
+    });
   }
 
   private mounted(): void {
@@ -304,10 +313,15 @@ export default class Home extends Vue {
         this.createLogRender('socket server pause...');
       } else {
         this.createLogRender('socket server closed...');
+        if (this.connectFailedNumber < 3) {
+          this.createLogRender('reconnect socket server...');
+          this.openSocket();
+        }
       }
       this.scrollToBottom();
     };
     this.ws.onerror = () => {
+      this.connectFailedNumber++;
       this.createLogRender('connect socket server failed...');
     };
   }
@@ -383,7 +397,7 @@ export default class Home extends Vue {
     if (!this.filterText) { return; }
     const newDeviceId: TreeNode = {
       id: this.data.length,
-      label: this.filterText,
+      label: this.filterText.trim(),
     };
 
     // 检测是否已经存在
@@ -407,13 +421,34 @@ export default class Home extends Vue {
     this.wsParams.deviceId = deviceId === 'All devices' ? '' : deviceId;
     this.form.id_name = deviceId === 'All devices' ? '' : deviceId;
     this.form.page = 1;
-    // 如果选择设备ID时不是实时状态，则不打开socket
-    if (!this.isDisabled) { return; }
+    // 如果选择设备ID时不是实时状态(查询状态)，则不打开socket，并获取其服务器IP
+    if (!this.isDisabled) {
+      // 判断设备ID是否有对应IP，没有才重新获取
+      const node = this.data.find((o) => o.label === deviceId);
+      if (node && !node!.ip) {
+        this.getDeviceIp(deviceId, true);
+      }
+      return;
+    }
     this.openSocket();
     this.isPause = false;
   }
 
+  /**
+   * 获取设备所在服务器IP，在刚进入系统时获取，另外如果在选择设备ID时未检测到IP，
+   * 则再次调用接口获取，此时若仍未获取到IP，则提示
+   */
+  private async getDeviceIp(deviceId: string, hasTip: boolean) {
+    const res: DeviceIp = await this.$http.post('/logTransmit', { account: deviceId }, { params: { noLoading: true } });
+    const { report_host } = res;
+    const data = this.data.find((o) => o.label === deviceId);
+    data!.ip = report_host;
+
+    if (!report_host && hasTip) { return this.$util.vmMsgWarning('服务器上无此设备！'); }
+  }
+
   private async onSubmit(flag: number) {
+    if (!this.form.id_name) { return this.$util.vmMsgWarning('请选择设备!'); }
     this.isQueryButtonClicked = true;
     if (this.form.dateRange && this.form.dateRange.length > 0) {
       this.form.start_time = new Date(this.form.dateRange[0]).getTime() / 1000;
@@ -423,9 +458,9 @@ export default class Home extends Vue {
       this.form.end_time = 0;
     }
     this.isGetting = true;
-    this.$util.vmOpenFullLoading();
-    const res: LogResponse = await this.$http.post('/v2/iotlog/getlog', this.form);
-    this.$util.vmCloseFullLoading();
+    const treeData = this.data.find((o) => o.label === this.form.id_name);
+    const url = `/${treeData!.ip}/v2/iotlog/getlog`;
+    const res: LogResponse = await this.$http.post(url, this.form);
     if (!res) { return; }
     const { logs } = res;
     if (!logs) {
@@ -451,17 +486,13 @@ export default class Home extends Vue {
 }
 </script>
 
-<style lang="scss" scoped>
-$input-width: 200px;
-$select-width: 130px;
-$bg-color: #409eff;
-$bg-font-color: #fff;
-
+<style scoped>
 .el-input {
-  width: $input-width;
+  width: 200px;
 }
+
 .el-select {
-  width: $select-width;
+  width: 130px;
 }
 
 .iot-lists-filter {
@@ -470,29 +501,30 @@ $bg-font-color: #fff;
 
 .el-tree {
   margin-top: 20px;
-  /deep/ .el-tree-node__content {
-    height: 36px;
-  }
-  /deep/ .el-tree-node.is-current {
-    > .el-tree-node__content {
-      background-color: $bg-color;
-      color: $bg-font-color;
-    }
-  }
-  .tree-content {
-    margin-left: -10px;
-    font-size: 12px;
-    width: 90%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    .tree-label {
-      width: 100%;
-      height: 100%;
-      display: flex;
-      align-items: center;
-    }
-  }
+}
+.el-tree /deep/ .el-tree-node__content {
+  height: 36px;
+}
+
+.el-tree /deep/ .el-tree-node.is-current > .el-tree-node__content {
+  background-color: #409eff;
+  color: #fff;
+}
+
+.el-tree .tree-content {
+  margin-left: -10px;
+  font-size: 12px;
+  width: 90%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.el-tree .tree-content .tree-label {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
 }
 
 .iot-lists {
@@ -501,6 +533,19 @@ $bg-font-color: #fff;
   min-width: 220px;
   overflow-y: scroll;
 }
+.iot-lists .item {
+  padding: 10px 15px;
+  margin: 0;
+  cursor: pointer;
+  transition: all 0.8s ease;
+}
+.iot-lists .item:first-child {
+  margin-top: 20px;
+}
+.iot-lists .item:hover {
+  background: #2196f3;
+  color: #fff;
+}
 
 .logs-lists {
   padding-left: 20px;
@@ -508,26 +553,28 @@ $bg-font-color: #fff;
   display: flex;
   height: 100%;
   flex-direction: column;
-  .logs {
-    background: #f1f1f1;
-    color: #583333;
-    height: 93%;
-    .logs-container {
-      overflow-y: scroll;
-      height: 100%;
-    }
-    /deep/ .log-detail {
-      margin: 10px 20px;
-    }
-  }
 }
-</style>
 
+.logs-lists .logs {
+  background: #f1f1f1;
+  color: #583333;
+  height: 70%;
+  flex-grow: 1;
+}
 
-<style scoped>
-/* .logs-lists .logs .log-detail span {
+.logs-lists .logs .logs-container {
+  overflow-y: scroll;
+  height: 100%;
+}
+
+.logs-lists .logs /deep/ .log-detail {
+  margin: 10px 20px;
+}
+
+.logs-lists .logs .log-detail span {
   display: table-cell;
 }
+
 .logs-lists .logs .log-detail .log-title {
   min-width: 250px;
 }
@@ -554,5 +601,5 @@ $bg-font-color: #fff;
 
 .logs-lists .logs .log-detail .fatal {
   color: #b65cff;
-} */
+}
 </style>
